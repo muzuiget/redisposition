@@ -1,0 +1,4 @@
+skin    redisposition  classic/1.0  skin/
+locale  redisposition  en-US        locale/en-US/
+locale  redisposition  zh-CN        locale/zh-CN/
+locale  redisposition  zh-TW        locale/zh-TW/

@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<!DOCTYPE mydialog SYSTEM "chrome://redisposition/locale/options.dtd">
+ 
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+    <setting type="string"
+             pref="extensions.redisposition.encodings" 
+             title="&CustomEncodings;" />
+</vbox>

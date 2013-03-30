@@ -1,0 +1,19 @@
+/* in browser window toolbar */
+
+toolbar #redisposition-button {
+    list-style-image: url("chrome://redisposition/skin/icon24.png");
+}
+
+toolbar[iconsize="small"] #redisposition-button {
+    list-style-image: url("chrome://redisposition/skin/icon16.png") !important;
+}
+
+toolbar #redisposition-button[enabled="no"] {
+    filter: url("chrome://mozapps/skin/extensions/extensions.svg#greyscale");
+}
+
+/* in customization panel */
+
+#redisposition-button:not([type="menu-button"]) {
+    list-style-image: url("chrome://redisposition/skin/icon24.png") !important;
+}
