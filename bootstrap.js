@@ -136,7 +136,7 @@ let ToolbarButton = {
      */
     cleanupButtons: function() {
         this.buttons = this.buttons.filter(function(value) {
-            [button, window] = value;
+            let window = value[1];
             return !window.closed;
         });
     },
