@@ -125,7 +125,7 @@ let ReDisposition = {
 let ToolbarButton = {
 
     /**
-     * Store button and rwindoponding object, use for update menu after
+     * Store button and corresponding window object, use for update menu after
      * change preference.
      * format: [[button1, window1], [button2, window2]]
      */
