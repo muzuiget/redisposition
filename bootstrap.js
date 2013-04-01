@@ -7,9 +7,8 @@
 const BROWSER_URI = 'chrome://browser/content/browser.xul';
 const STYLE_URI = 'chrome://redisposition/skin/browser.css';
 const NS_XUL = 'http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul';
-const PREFERENCE_PREFIX = 'extensions.redisposition.';
-const PREFERENCE_NAME = 'encodings';
-const PREFERENCE_VALUE = 'GB18030, BIG5';
+const PREFERENCE_BRANCH = 'extensions.redisposition.';
+const CUSTOM_ENCODINGS = 'GB18030, BIG5';
 
 const log = function() { dump(Array.slice(arguments).join(' ') + '\n'); }
 
@@ -21,7 +20,7 @@ const IOS = Cc['@mozilla.org/network/io-service;1']
 const OBS = Cc["@mozilla.org/observer-service;1"]
               .getService(Ci.nsIObserverService);
 const PFS = Cc["@mozilla.org/preferences-service;1"]
-              .getService(Ci.nsIPrefService).getBranch(PREFERENCE_PREFIX);
+              .getService(Ci.nsIPrefService).getBranch(PREFERENCE_BRANCH);
 const WM = Cc['@mozilla.org/appshell/window-mediator;1']
              .getService(Ci.nsIWindowMediator);
 const WW = Cc['@mozilla.org/embedcomp/window-watcher;1']
@@ -159,17 +158,18 @@ let ToolbarButton = {
      * Get user custom encodings from preferences manager.
      */
     getCustomEncodings: function() {
-        let text = PREFERENCE_VALUE; // default if not exists
+        let key = 'encodings';
+        let data;
         try {
-            text = PFS.getComplexValue(PREFERENCE_NAME,
-                                        Ci.nsISupportsString).data;
+            data = PFS.getComplexValue(key, Ci.nsISupportsString).data;
         } catch(error) {
-            PFS.setComplexValue(PREFERENCE_NAME, Ci.nsISupportsString,
-                                nsISupportsString(text));
+            data = CUSTOM_ENCODINGS;
+            PFS.setComplexValue(key, Ci.nsISupportsString,
+                                nsISupportsString(data));
         }
 
         // convert it to array, and remove spaces and empty entry
-        return text.split(',').map(function(v) { return v.trim(); })
+        return data.split(',').map(function(v) { return v.trim(); })
                               .filter(function(v) { return v !== ''; });
     },
 
@@ -333,7 +333,7 @@ let windowOpenedListener = {
 
 let preferenceChangedListener = {
     observe: function(subject, topic, data) {
-        if (data !== PREFERENCE_NAME) {
+        if (data !== 'encodings') {
             return;
         }
         ToolbarButton.refreshMenus();
