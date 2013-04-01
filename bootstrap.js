@@ -173,6 +173,18 @@ let ToolbarButton = {
                               .filter(function(v) { return v !== ''; });
     },
 
+    isFirstRun: function() {
+        let key = 'firstRun';
+        let value;
+        try {
+            value = PFS.getBoolPref(key);
+        } catch(error) {
+            PFS.setBoolPref(key, false);
+            value = true;
+        }
+        return value;
+    },
+
     createMenuitem: function(document, encoding, checked) {
         let menuitem = document.createElementNS(NS_XUL, 'menuitem');
         menuitem.value = encoding;
@@ -239,9 +251,13 @@ let ToolbarButton = {
             }
         }
 
-        // still in customization palette;
+        // if widget isn't in any toolbar, default add it next to searchbar
         if (!container) {
-            return;
+            if (this.isFirstRun()) {
+                container = document.getElementById('nav-bar');
+            } else {
+                return;
+            }
         }
 
         // Now retrieve a reference to the next toolbar item
