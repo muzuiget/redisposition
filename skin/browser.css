@@ -8,7 +8,7 @@ toolbar[iconsize="small"] #redisposition-button {
     list-style-image: url("chrome://redisposition/skin/icon16.png") !important;
 }
 
-toolbar #redisposition-button[enabled="no"] {
+toolbar #redisposition-button[disabled="yes"] {
     filter: url("chrome://mozapps/skin/extensions/extensions.svg#greyscale");
 }
 

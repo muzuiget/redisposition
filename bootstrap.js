@@ -105,19 +105,19 @@ let ReDisposition = {
         // The redisposition-button is a menu-button.
         // if click menu part, always set status to enable.
         if (event.target !== button) {
-            button.setAttribute('enabled', 'yes');
+            button.removeAttribute('disabled');
             this.enable(true);
             return;
         }
 
         // If click the button part, toggle status,
-        let value = button.getAttribute('enabled');
+        let value = button.getAttribute('disabled');
         if (value === 'yes') {
-            button.setAttribute('enabled', 'no');
-            this.enable(false);
-        } else {
-            button.setAttribute('enabled', 'yes');
+            button.removeAttribute('disabled');
             this.enable(true);
+        } else {
+            button.setAttribute('disabled', 'yes');
+            this.enable(false);
         }
     }
 };
@@ -222,7 +222,9 @@ let ToolbarButton = {
         button.setAttribute('removable', 'true');
         button.setAttribute('label', 'ReDisposition');
         button.setAttribute('tooltiptext', 'ReDisposition');
-        button.setAttribute('enabled', Settings.enabled ? 'yes' : 'no');
+        if (!Settings.enabled) {
+            button.setAttribute('disabled', 'yes');
+        }
         button.addEventListener('command', function(event) {
             ReDisposition.onclick(event, button);;
         });
