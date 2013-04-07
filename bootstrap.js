@@ -4,9 +4,9 @@
 
 "use strict";
 
+const NS_XUL = 'http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul';
 const BROWSER_URI = 'chrome://browser/content/browser.xul';
 const STYLE_URI = 'chrome://redisposition/skin/browser.css';
-const NS_XUL = 'http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul';
 const PREFERENCE_BRANCH = 'extensions.redisposition.';
 const CUSTOM_ENCODINGS = 'GB18030, BIG5';
 
@@ -17,16 +17,14 @@ const SSS = Cc['@mozilla.org/content/style-sheet-service;1']
               .getService(Ci.nsIStyleSheetService);
 const IOS = Cc['@mozilla.org/network/io-service;1']
               .getService(Ci.nsIIOService);
-const OBS = Cc["@mozilla.org/observer-service;1"]
+const OBS = Cc['@mozilla.org/observer-service;1']
               .getService(Ci.nsIObserverService);
-const PFS = Cc["@mozilla.org/preferences-service;1"]
+const PFS = Cc['@mozilla.org/preferences-service;1']
               .getService(Ci.nsIPrefService).getBranch(PREFERENCE_BRANCH);
-const WM = Cc['@mozilla.org/appshell/window-mediator;1']
-             .getService(Ci.nsIWindowMediator);
 const WW = Cc['@mozilla.org/embedcomp/window-watcher;1']
              .getService(Ci.nsIWindowWatcher);
 const nsISupportsString = function(data) {
-    let string = Cc["@mozilla.org/supports-string;1"]
+    let string = Cc['@mozilla.org/supports-string;1']
                    .createInstance(Ci.nsISupportsString);
     string.data = data;
     return string;
@@ -102,7 +100,7 @@ let ReDisposition = {
         }
     },
     onclick: function(event, button) {
-        // The redisposition-button is a menu-button.
+        // The toolbar button is a menu-button.
         // if click menu part, always set status to enable.
         if (event.target !== button) {
             button.removeAttribute('disabled');
@@ -187,7 +185,6 @@ let ToolbarButton = {
 
     createMenuitem: function(document, encoding, checked) {
         let menuitem = document.createElementNS(NS_XUL, 'menuitem');
-        menuitem.value = encoding;
         menuitem.setAttribute('label', encoding);
         menuitem.setAttribute('checked', checked);
         menuitem.setAttribute('name', 'redisposition-encoding');
@@ -269,7 +266,7 @@ let ToolbarButton = {
         let ids = (currentSet === '__empty') ? [] : currentSet.split(',');
         let idx = ids.indexOf(id);
         if (idx !== -1) {
-            for (var i = idx; i < ids.length; i += 1) {
+            for (let i = idx; i < ids.length; i += 1) {
                 nextNode = document.getElementById(ids[i]);
                 if (nextNode) {
                     break;
@@ -380,7 +377,7 @@ let shutdown = function(data, reason) {
         ToolbarButton.removeButton(windows.getNext());
     }
 
-    // stop toolbar to new open window
+    // stop add toolbar to new open window
     WW.unregisterNotification(windowOpenedListener);
 
     // stop update menu after preference change

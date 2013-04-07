@@ -7,7 +7,7 @@
     <em:version>0.1.2</em:version>
     <em:type>2</em:type>
     <em:bootstrap>true</em:bootstrap>
-    <em:unpack>false</em:unpack>
+    <em:unpack>true</em:unpack>
 
     <!-- Front End MetaData -->
     <em:name>ReDisposition</em:name>
