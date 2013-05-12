@@ -4,236 +4,180 @@
 
 "use strict";
 
+const log = function() { dump(Array.slice(arguments).join(' ') + '\n'); };
+const trace = function(error) { log(error); log(error.stack); };
+const dirobj = function(obj) { for (let i in obj) { log(i, ':', obj[i]); } };
+
+const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 const NS_XUL = 'http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul';
-const BROWSER_URI = 'chrome://browser/content/browser.xul';
-const STYLE_URI = 'chrome://redisposition/skin/browser.css';
-const PREFERENCE_BRANCH = 'extensions.redisposition.';
-const CUSTOM_ENCODINGS = 'GB18030, BIG5';
 
-const log = function() { dump(Array.slice(arguments).join(' ') + '\n'); }
+/* library */
 
-const {classes: Cc, interfaces: Ci} = Components;
-const SSS = Cc['@mozilla.org/content/style-sheet-service;1']
-              .getService(Ci.nsIStyleSheetService);
-const IOS = Cc['@mozilla.org/network/io-service;1']
-              .getService(Ci.nsIIOService);
-const OBS = Cc['@mozilla.org/observer-service;1']
-              .getService(Ci.nsIObserverService);
-const PFS = Cc['@mozilla.org/preferences-service;1']
-              .getService(Ci.nsIPrefService).getBranch(PREFERENCE_BRANCH);
-const WW = Cc['@mozilla.org/embedcomp/window-watcher;1']
-             .getService(Ci.nsIWindowWatcher);
-const nsISupportsString = function(data) {
-    let string = Cc['@mozilla.org/supports-string;1']
-                   .createInstance(Ci.nsISupportsString);
-    string.data = data;
-    return string;
-};
+const Utils = (function() {
 
-// keep all current status
-let Settings = {
-    enabled: false, // mean take effect, sync with toolbar button status
-    inline: false, // inline mode, avoid compare with string
-    encoding: 'UTF-8' // use this encoding, ignore in inline mode
-};
+    const sbService = Cc['@mozilla.org/intl/stringbundle;1']
+                         .getService(Ci.nsIStringBundleService);
+    const windowMediator = Cc['@mozilla.org/appshell/window-mediator;1']
+                              .getService(Ci.nsIWindowMediator);
 
-let filenameReg = /attachment; ?filename="(.+?)"/;
-let httpResponseListener = {
-    observe: function(subject, topic, data) {
-        if (!Settings.enabled || topic !== 'http-on-examine-response') {
+    let localization = function(id, name) {
+        let uri = 'chrome://' + id + '/locale/' + name + '.properties';
+        return sbService.createBundle(uri).GetStringFromName;
+    };
+
+    let setAttrs = function(widget, attrs) {
+        for (let [key, value] in Iterator(attrs)) {
+            widget.setAttribute(key, value);
+        }
+    };
+
+    let getMostRecentWindow = function(winType) {
+        return windowMediator.getMostRecentWindow(winType);
+    };
+
+    let exports = {
+        localization: localization,
+        setAttrs: setAttrs,
+        getMostRecentWindow: getMostRecentWindow,
+    };
+    return exports;
+})();
+
+const StyleManager = (function() {
+
+    const styleService = Cc['@mozilla.org/content/style-sheet-service;1']
+                            .getService(Ci.nsIStyleSheetService);
+    const ioService = Cc['@mozilla.org/network/io-service;1']
+                         .getService(Ci.nsIIOService);
+
+    const STYLE_TYPE = styleService.USER_SHEET;
+
+    const new_nsiURI = function(uri) ioService.newURI(uri, null, null);
+
+    let uris = [];
+
+    let load = function(uri) {
+        let nsiURI = new_nsiURI(uri);
+        if (styleService.sheetRegistered(nsiURI, STYLE_TYPE)) {
             return;
         }
+        styleService.loadAndRegisterSheet(nsiURI, STYLE_TYPE);
+        uris.push(uri);
+    };
 
-        // check if have header
-        let channel = subject.QueryInterface(Ci.nsIHttpChannel);
-        let header;
-        try {
-            header = channel.getResponseHeader('Content-Disposition');
-        } catch(error) {
+    let unload = function(uri) {
+        let nsiURI = new_nsiURI(uri);
+        if (!styleService.sheetRegistered(nsiURI, STYLE_TYPE)) {
             return;
         }
+        styleService.unregisterSheet(nsiURI, STYLE_TYPE);
+        let start = uris.indexOf(uri);
+        uris.splice(start, 1);
+    };
 
-        // override to inline
-        if (Settings.inline) {
-            channel.setResponseHeader('Content-Disposition', 'inline', false);
-            return;
+    let destory = function() {
+        for (let uri of uris.slice(0)) {
+            unload(uri);
         }
+        uris = null;
+    };
 
-        // override to specify encoding
-        let newHeader;
-        try {
-            let filename = header.match(filenameReg)[1];
-            newHeader = 'attachment; filename*=' +
-                        Settings.encoding + "''" + filename;
-        } catch(error) {
-            log(error, header);
-            return;
-        }
+    let exports = {
+        load: load,
+        unload: unload,
+        destory: destory,
+    };
+    return exports;
+})();
 
-        channel.setResponseHeader('Content-Disposition', newHeader, false);
-    }
-};
+const BrowserManager = (function() {
 
-let ReDisposition = {
-    enable: function(value) {
-        try {
-            if (value) {
-                OBS.addObserver(httpResponseListener,
-                                'http-on-examine-response', false);
-            } else {
-                OBS.removeObserver(httpResponseListener,
-                                   'http-on-examine-response', false);
+    const windowWatcher = Cc['@mozilla.org/embedcomp/window-watcher;1']
+                             .getService(Ci.nsIWindowWatcher);
+
+    const BROWSER_URI = 'chrome://browser/content/browser.xul';
+
+    let listeners = [];
+
+    let onload = function(event) {
+        for (let listener of listeners) {
+            let window = event.currentTarget;
+            window.removeEventListener('load', onload);
+            if (window.location.href !== BROWSER_URI) {
+                return;
             }
-            Settings.enabled = value;
-        } catch(error) {
-            Settings.enabled = false;
+            try {
+                listener(window);
+            } catch(error) {
+                trace(error);
+            }
         }
-    },
-    change: function(encoding) {
-        // Although we can use empty string represent inline, it is better not
-        // to compare string time-to-time in httpResponseListener.
-        if (encoding === 'inline') {
-            Settings.inline = true;
-        } else {
-            Settings.inline = false;
-            Settings.encoding = encoding;
+    };
+
+    let observer = {
+        observe: function(window, topic, data) {
+            if (topic !== 'domwindowopened') {
+                return;
+            }
+            window.addEventListener('load', onload);
         }
-    },
-    onclick: function(event, button) {
-        // The toolbar button is a menu-button.
-        // if click menu part, always set status to enable.
-        if (event.target !== button) {
-            button.removeAttribute('disabled');
-            this.enable(true);
-            return;
+    };
+
+    let run = function(func, uri) {
+        let enumerator = windowWatcher.getWindowEnumerator();
+        while (enumerator.hasMoreElements()) {
+            let window = enumerator.getNext();
+            if (window.location.href !== BROWSER_URI) {
+                continue;
+            }
+
+            try {
+                func(window);
+            } catch(error) {
+                trace(error);
+            }
         }
+    };
 
-        // If click the button part, toggle status,
-        let value = button.getAttribute('disabled');
-        if (value === 'yes') {
-            button.removeAttribute('disabled');
-            this.enable(true);
-        } else {
-            button.setAttribute('disabled', 'yes');
-            this.enable(false);
+    let addListener = function(listener) {
+        listeners.push(listener);
+    };
+
+    let removeListener = function(listener) {
+        let start = listeners.indexOf(listener);
+        if (start !== -1) {
+            listeners.splice(start, 1);
         }
-    }
-};
+    };
 
-let ToolbarButton = {
+    let initialize = function() {
+        windowWatcher.registerNotification(observer);
+    };
 
-    /**
-     * Store button and corresponding window object, use for update menu after
-     * change preference.
-     * format: [[button1, window1], [button2, window2]]
-     */
-    buttons: [],
+    let destory = function() {
+        windowWatcher.unregisterNotification(observer);
+        listeners = null;
+    };
 
-    /**
-     * Remove the closed window reference.
-     */
-    cleanupButtons: function() {
-        this.buttons = this.buttons.filter(function(value) {
-            let window = value[1];
-            return !window.closed;
-        });
-    },
+    initialize();
 
-    /**
-     * Update menu after change preference,
-     * a callback for preferenceChangedListener.
-     */
-    refreshMenus: function() {
-        this.cleanupButtons();
-        let buttons = this.buttons;
-        for (let [button, window] of this.buttons) {
-            let menupopup = this.createMenupopup(window.document);
-            button.replaceChild(menupopup, button.firstChild);
-        }
-    },
+    let exports = {
+        run: run,
+        addListener: addListener,
+        removeListener: removeListener,
+        destory: destory,
+    };
+    return exports;
+})();
 
-    /**
-     * Get user custom encodings from preferences manager.
-     */
-    getCustomEncodings: function() {
-        let key = 'encodings';
-        let data;
-        try {
-            data = PFS.getComplexValue(key, Ci.nsISupportsString).data;
-        } catch(error) {
-            data = CUSTOM_ENCODINGS;
-            PFS.setComplexValue(key, Ci.nsISupportsString,
-                                nsISupportsString(data));
-        }
-
-        // convert it to array, and remove spaces and empty entry
-        return data.split(',').map(function(v) { return v.trim(); })
-                              .filter(function(v) { return v !== ''; });
-    },
-
-    isFirstRun: function() {
-        let key = 'firstRun';
-        let value;
-        try {
-            value = PFS.getBoolPref(key);
-        } catch(error) {
-            PFS.setBoolPref(key, false);
-            value = true;
-        }
-        return value;
-    },
-
-    createMenuitem: function(document, encoding, checked) {
-        let menuitem = document.createElementNS(NS_XUL, 'menuitem');
-        menuitem.setAttribute('label', encoding);
-        menuitem.setAttribute('checked', checked);
-        menuitem.setAttribute('name', 'redisposition-encoding');
-        menuitem.setAttribute('type', 'radio');
-        menuitem.addEventListener('command', function(event) {
-            ReDisposition.change(encoding);
-        });
-        return menuitem;
-    },
-
-    createMenupopup: function(document) {
-        let menupopup = document.createElementNS(NS_XUL, 'menupopup');
-        menupopup.appendChild(this.createMenuitem(document, 'UTF-8', true));
-
-        // add user custom
-        let encodings = this.getCustomEncodings();
-        for (let encoding of encodings) {
-            let menuitem = this.createMenuitem(document, encoding, false);
-            menupopup.appendChild(menuitem);
-        }
-
-        menupopup.appendChild(this.createMenuitem(document, 'inline', false));
-        return menupopup;
-    },
-
-    createButton: function(document) {
-        let button = document.createElementNS(NS_XUL, 'toolbarbutton');
-        button.setAttribute('id', 'redisposition-button');
-        button.setAttribute('class',
-                            'toolbarbutton-1 chromeclass-toolbar-additional');
-        button.setAttribute('type', 'menu-button');
-        button.setAttribute('removable', 'true');
-        button.setAttribute('label', 'ReDisposition');
-        button.setAttribute('tooltiptext', 'ReDisposition');
-        if (!Settings.enabled) {
-            button.setAttribute('disabled', 'yes');
-        }
-        button.addEventListener('command', function(event) {
-            ReDisposition.onclick(event, button);;
-        });
-        return button;
-    },
+const ToolbarManager = (function() {
 
     /**
      * Remember the button position.
      * This function Modity from addon-sdk file lib/sdk/widget.js, and
      * function BrowserWindow.prototype._insertNodeInToolbar
      */
-    layoutButton: function(document, button) {
+    let layoutWidget = function(document, button, isFirstRun) {
 
         // Add to the customization palette
         let toolbox = document.getElementById('navigator-toolbox');
@@ -252,7 +196,7 @@ let ToolbarButton = {
 
         // if widget isn't in any toolbar, default add it next to searchbar
         if (!container) {
-            if (this.isFirstRun()) {
+            if (isFirstRun) {
                 container = document.getElementById('nav-bar');
             } else {
                 return;
@@ -283,106 +227,612 @@ let ToolbarButton = {
             container.setAttribute('currentset', container.currentSet);
             document.persist(container.id, 'currentset');
         }
-    },
+    };
 
-    insertButton: function(window) {
-        if (window.location.href !== BROWSER_URI) {
-            return;
-        }
-
-        let document = window.document;
+    let addWidget = function(window, widget, isFirstRun) {
         try {
-            let button = this.createButton(document);
-            this.layoutButton(document, button);
-            this.buttons.push([button, window]);
+            layoutWidget(window.document, widget, isFirstRun);
+        } catch(error) {
+            trace(error);
+        }
+    };
 
-            // add menu
-            let menupopup = this.createMenupopup(document);
+    let removeWidget = function(window, widgetId) {
+        try {
+            let widget = window.document.getElementById(widgetId);
+            widget.parentNode.removeChild(widget);
+        } catch(error) {
+            trace(error);
+        }
+    };
+
+    let exports = {
+        addWidget: addWidget,
+        removeWidget: removeWidget,
+    };
+    return exports;
+})();
+
+const Pref = function(branchRoot) {
+
+    const supportsStringClass = Cc['@mozilla.org/supports-string;1'];
+    const prefService = Cc['@mozilla.org/preferences-service;1']
+                           .getService(Ci.nsIPrefService);
+
+    const new_nsiSupportsString = function(data) {
+        let string = supportsStringClass.createInstance(Ci.nsISupportsString);
+        string.data = data;
+        return string;
+    };
+
+    let branch = prefService.getBranch(branchRoot);
+
+    let setBool = function(key, value) {
+        try {
+            branch.setBoolPref(key, value);
+        } catch(error) {
+            branch.clearUserPref(key)
+            branch.setBoolPref(key, value);
+        }
+    };
+    let getBool = function(key, defaultValue) {
+        let value;
+        try {
+            value = branch.getBoolPref(key);
+        } catch(error) {
+            value = defaultValue || null;
+        }
+        return value;
+    };
+
+    let setInt = function(key, value) {
+        try {
+            branch.setIntPref(key, value);
+        } catch(error) {
+            branch.clearUserPref(key)
+            branch.setIntPref(key, value);
+        }
+    };
+    let getInt = function(key, defaultValue) {
+        let value;
+        try {
+            value = branch.getIntPref(key);
+        } catch(error) {
+            value = defaultValue || null;
+        }
+        return value;
+    };
+
+    let setString = function(key, value) {
+        try {
+            branch.setComplexValue(key, Ci.nsISupportsString,
+                                   new_nsiSupportsString(value));
+        } catch(error) {
+            branch.clearUserPref(key)
+            branch.setComplexValue(key, Ci.nsISupportsString,
+                                   new_nsiSupportsString(value));
+        }
+    };
+    let getString = function(key, defaultValue) {
+        let value;
+        try {
+            value = branch.getComplexValue(key, Ci.nsISupportsString).data;
+        } catch(error) {
+            value = defaultValue || null;
+        }
+        return value;
+    };
+
+    let addObserver = function(observer) {
+        try {
+            branch.addObserver('', observer, false);
+        } catch(error) {
+            trace(error);
+        }
+    };
+    let removeObserver = function(observer) {
+        try {
+            branch.removeObserver('', observer, false);
+        } catch(error) {
+            trace(error);
+        }
+    };
+
+    let exports = {
+        setBool: setBool,
+        getBool: getBool,
+        setInt: setInt,
+        getInt: getInt,
+        setString: setString,
+        getString: getString,
+        addObserver: addObserver,
+        removeObserver: removeObserver
+    }
+    return exports;
+};
+
+let ResponseManager = (function() {
+
+    const obsService = Cc['@mozilla.org/observer-service;1']
+                          .getService(Ci.nsIObserverService);
+
+    const RESPONSE_TOPIC = 'http-on-examine-response';
+
+    let observers = [];
+
+    let addObserver = function(observer) {
+        try {
+            obsService.addObserver(observer, RESPONSE_TOPIC, false);
+        } catch(error) {
+            trace(error);
+        }
+        observers.push(observers);
+    };
+
+    let removeObserver = function(observer) {
+        try {
+            obsService.removeObserver(observer, RESPONSE_TOPIC, false);
+        } catch(error) {
+            trace(error);
+        }
+    };
+
+    let destory = function() {
+        for (let observer of observers) {
+            removeObserver(observer);
+        }
+        observers = null;
+    };
+
+    let exports = {
+        addObserver: addObserver,
+        removeObserver: removeObserver,
+        destory: destory,
+    };
+    return exports;
+})();
+
+/* main */
+
+let _ = null;
+let loadLocalization = function() {
+    _ = Utils.localization('redisposition', 'global');
+};
+
+let encodingsConverter = function(text) {
+    let encodings = ['inline', 'UTF-8'];
+    let values = text.split(',');
+    for (let value of values) {
+        value = value.trim();
+        if (value) {
+            encodings.push(value);
+        }
+    }
+    return encodings;
+};
+
+let ReDisposition = function() {
+
+    const EXTENSION_ID = 'redisposition@qixinglu.com'
+    const EXTENSION_NAME = 'ReDisposition';
+    const BUTTON_ID = 'redisposition-button';
+    const STYLE_URI = 'chrome://redisposition/skin/browser.css';
+    const PREF_BRANCH = 'extensions.redisposition.';
+
+    const ACTIVATED_TOOLTIPTEXT = EXTENSION_NAME + '\n' +
+                                  _('activatedTooltip');
+    const DEACTIVATED_TOOLTIPTEXT = EXTENSION_NAME + '\n' +
+                                    _('deactivatedTooltip');
+    const FILENAME_REGEXP = /attachment; ?filename="(.+?)"/;
+
+    const DEFAULT_ENCODINGS = 'GB18030, BIG5';
+
+    let config = {
+        firstRun: true,
+        activated: false,
+        encodings: [],
+        currentEncoding: ''
+    };
+    let pref = Pref(PREF_BRANCH);
+
+    let prefObserver;
+    let respObserver;
+    let toolbarButtons;
+
+    prefObserver = {
+
+        observe: function(subject, topic, data) {
+            this.reloadConfig();
+            respObserver.refresh();
+            toolbarButtons.refresh();
+        },
+
+        start: function() {
+            pref.addObserver(this);
+        },
+        stop: function() {
+            pref.removeObserver(this);
+        },
+
+        initBool: function(name) {
+            let value = pref.getBool(name);
+            if (value === null) {
+                pref.setBool(name, config[name]);
+            } else {
+                config[name] = value;
+            }
+        },
+        initString: function(name) {
+            let value = pref.getString(name);
+            if (value === null) {
+                pref.setString(name, config[name]);
+            } else {
+                config[name] = value;
+            }
+        },
+        initComplex: function(name, converter, defaultValue) {
+            let text = pref.getString(name);
+            if (text === null) {
+                pref.setString(name, defaultValue);
+                config[name] = converter(defaultValue);
+            } else {
+                config[name] = converter(text);
+            }
+        },
+
+        loadBool: function(name) {
+            let value = pref.getBool(name);
+            if (value !== null) {
+                config[name] = value;
+            }
+        },
+        loadString: function(name) {
+            let value = pref.getString(name);
+            if (value !== null) {
+                config[name] = value;
+            }
+        },
+        loadComplex: function(name, converter) {
+            let text = pref.getString(name);
+            if (text !== null) {
+                config[name] = converter(text);
+            }
+        },
+
+        initConfig: function() {
+            let {initBool, initString, initComplex} = this;
+            initBool('firstRun');
+            initBool('activated');
+            initComplex('encodings', encodingsConverter, DEFAULT_ENCODINGS);
+            initString('currentEncoding');
+        },
+        reloadConfig: function() {
+            let {loadBool, loadString, loadComplex} = this;
+            loadBool('firstRun');
+            loadBool('activated');
+            loadComplex('encodings', encodingsConverter);
+            loadString('currentEncoding');
+        },
+        saveConfig: function() {
+            this.stop(); // avoid recursion
+
+            pref.setBool('firstRun', false);
+            pref.setBool('activated', config.activated);
+            pref.setString('currentEncoding', config.currentEncoding);
+
+            this.start();
+        }
+    };
+
+    respObserver = {
+
+        observing: false,
+
+        observe: function(subject, topic, data) {
+            try {
+                let channel = subject.QueryInterface(Ci.nsIHttpChannel);
+                this.override(channel);
+            } catch(error) {
+                trace(error);
+            }
+        },
+
+        start: function() {
+            if (!this.observing) {
+                ResponseManager.addObserver(this);
+                this.observing = true;
+            }
+        },
+        stop: function() {
+            if (this.observing) {
+                ResponseManager.removeObserver(this);
+                this.observing = false;
+            }
+        },
+        refresh: function() {
+            let {encodings, currentEncoding} = config;
+            if (!currentEncoding ||
+                    encodings.indexOf(currentEncoding) === -1) {
+                config.activated = false;
+                config.currentEncoding = '';
+                prefObserver.saveConfig();
+            }
+
+            if (config.activated) {
+                this.start();
+            } else {
+                this.stop();
+            }
+        },
+
+        override: function(channel) {
+
+            // check if have header
+            let header;
+            try {
+                header = channel.getResponseHeader('Content-Disposition');
+            } catch(error) {
+                return;
+            }
+
+            // override to inline
+            if (config.currentEncoding === 'inline') {
+                channel.setResponseHeader('Content-Disposition', 'inline', false);
+                return;
+            }
+
+            // override to specify encoding
+            let newHeader;
+            try {
+                let filename = header.match(FILENAME_REGEXP)[1];
+                newHeader = 'attachment; filename*=' +
+                             config.currentEncoding + "''" + filename;
+            } catch(error) {
+                trace(error, header);
+                return;
+            }
+
+            channel.setResponseHeader('Content-Disposition', newHeader, false);
+        }
+    };
+
+    toolbarButtons = {
+
+        refresh: function() {
+            this.refreshMenu();
+            this.refreshStatus();
+        },
+
+        refreshMenu: function() {
+            let that = this;
+            BrowserManager.run(function(window) {
+                let document = window.document;
+                let button = document.getElementById(BUTTON_ID);
+                let encodingMenuitems= that.createEncodingMenuitems(document);
+                that.refreshMenuFor(button, encodingMenuitems);
+            });
+        },
+        refreshMenuFor: function(button, encodingMenuitems) {
+            let menupopup = button.getElementsByTagName('menupopup')[0];
+            let prefMenuitem = button.getElementsByClassName('pref')[0];
+            let menusep = button.getElementsByTagName('menuseparator')[0];
+
+            menupopup.innerHTML = '';
+            menupopup.appendChild(prefMenuitem);
+            menupopup.appendChild(menusep);
+            for (let menuitem of encodingMenuitems) {
+                menuitem.addEventListener(
+                            'command', this.onEncodingMenuitemCommand);
+                menupopup.appendChild(menuitem);
+            }
+        },
+
+        refreshStatus: function() {
+            let that = this;
+            BrowserManager.run(function(window) {
+                let document = window.document;
+                let button = document.getElementById(BUTTON_ID);
+                that.refreshStatusFor(button);
+            });
+        },
+        refreshStatusFor: function(button) {
+            let {activated, encodings, currentEncoding} = config;
+            let encodingMenuitems = button.getElementsByClassName('encoding');
+            let menusep = button.getElementsByTagName('menuseparator')[0];
+
+            // always deactivate button if is not check an encodingMenuitem
+            if (!currentEncoding) {
+                button.setAttribute('disabled', 'yes');
+                button.setAttribute('tooltiptext', DEACTIVATED_TOOLTIPTEXT);
+                return;
+            }
+
+            // update button and menuitems status
+            if (activated) {
+                button.removeAttribute('disabled');
+                button.setAttribute('tooltiptext', ACTIVATED_TOOLTIPTEXT);
+            } else {
+                button.setAttribute('disabled', 'yes');
+                button.setAttribute('tooltiptext', DEACTIVATED_TOOLTIPTEXT);
+            }
+
+            for (let menuitem of encodingMenuitems) {
+                let label = menuitem.getAttribute('label');
+                menuitem.setAttribute('checked', label === currentEncoding);
+            }
+
+        },
+
+        toggle: function(activated) {
+            if (activated === undefined) {
+                activated = !config.activated;
+            }
+            config.activated = activated;
+            prefObserver.saveConfig();
+            respObserver.refresh();
+            this.refreshStatus();
+        },
+
+        createButtonCommand: function() {
+            let that = this; // damn it
+            return function(event) {
+
+                // event fire from button
+                if (event.target === this) {
+                    // is button, toggle false if no uastring selected
+                    if (config.currentEncoding) {
+                        that.toggle();
+                    } else {
+                        that.toggle(false);
+                    }
+                    return;
+                }
+
+                // event fire from encodingMenuitem
+                if (event.target.className === 'encoding') {
+                    that.toggle(true);
+                    return;
+                }
+
+                // ignore others
+            }
+        },
+        onPrefMenuitemCommand: function(event) {
+            let window = event.target.ownerDocument.defaultView;
+            let url = 'addons://detail/' +
+                      encodeURIComponent('redisposition@qixinglu.com') +
+                      '/preferences'
+            window.BrowserOpenAddonsMgr(url);
+        },
+        onEncodingMenuitemCommand: function(event) {
+            config.currentEncoding = event.target.getAttribute('label');
+        },
+
+        createEncodingMenuitems: function(document) {
+            let menuitems = [];
+            for (let encoding of config.encodings) {
+                let attrs = {
+                    'class': 'encoding',
+                    label: encoding,
+                    value: encoding,
+                    tooltiptext: encoding,
+                    name: 'redisposition-encoding',
+                    type: 'radio',
+                };
+                let menuitem = document.createElementNS(NS_XUL, 'menuitem');
+                Utils.setAttrs(menuitem, attrs);
+                menuitems.push(menuitem);
+            }
+            return menuitems;
+        },
+
+        createInstance: function(window) {
+            let document = window.document;
+
+            let button = (function() {
+                let attrs = {
+                    id: BUTTON_ID,
+                    'class': 'toolbarbutton-1 chromeclass-toolbar-additional',
+                    type: 'menu-button',
+                    removable: true,
+                    label: EXTENSION_NAME,
+                    tooltiptext: EXTENSION_NAME,
+                };
+                if (config.activated) {
+                    attrs.tooltiptext = ACTIVATED_TOOLTIPTEXT;
+                } else {
+                    attrs.disabled = 'yes';
+                    attrs.tooltiptext = DEACTIVATED_TOOLTIPTEXT;
+                }
+                let button = document.createElementNS(NS_XUL, 'toolbarbutton');
+                Utils.setAttrs(button, attrs);
+                return button;
+            })();
+            button.addEventListener('command', this.createButtonCommand());
+
+            let prefMenuitem = (function() {
+                let menuitem = document.createElementNS(NS_XUL, 'menuitem');
+                menuitem.setAttribute('class', 'pref');
+                menuitem.setAttribute('label', _('openPreferences'));
+                return menuitem;
+            })();
+            prefMenuitem.addEventListener('command',
+                                          this.onPrefMenuitemCommand);
+
+            let menusep = document.createElementNS(NS_XUL, 'menuseparator');
+            let encodingMenuitems= this.createEncodingMenuitems(document);
+
+            let menupopup = document.createElementNS(NS_XUL, 'menupopup');
+            menupopup.appendChild(prefMenuitem);
+            menupopup.appendChild(menusep);
+            for (let menuitem of encodingMenuitems) {
+                menuitem.addEventListener('command', this.onEncodingMenuitemCommand);
+                menupopup.appendChild(menuitem);
+            }
+
             button.appendChild(menupopup);
-        } catch(error) {
-            log(error);
+            this.refreshStatusFor(button);
+            return button;
         }
-    },
+    };
 
-    removeButton: function(window) {
-        if (window.location.href !== BROWSER_URI) {
-            return;
-        }
-
-        let document = window.document;
+    let insertToolbarButton = function(window) {
+        let button = toolbarButtons.createInstance(window);
         try {
-            let button = document.getElementById('redisposition-button');
-            button.parentNode.removeChild(button);
+            ToolbarManager.addWidget(window, button, config.firstRun);
         } catch(error) {
-            log(error);
+            trace(error);
         }
+    };
+    let removeToolbarButton = function(window) {
+        try {
+            ToolbarManager.removeWidget(window, BUTTON_ID);
+        } catch(error) {
+            trace(error);
+        }
+    };
+
+    let initialize = function() {
+        prefObserver.initConfig();
+        prefObserver.start();
+        respObserver.refresh();
+
+        BrowserManager.run(insertToolbarButton);
+        BrowserManager.addListener(insertToolbarButton);
+        StyleManager.load(STYLE_URI);
+    };
+    let destory = function() {
+        prefObserver.saveConfig();
+        prefObserver.stop();
+        respObserver.stop();
+
+        BrowserManager.run(removeToolbarButton);
+        BrowserManager.destory();
+        StyleManager.destory();
+    };
+
+    let exports = {
+        initialize: initialize,
+        destory: destory,
     }
+    return exports;
+
 };
 
-let windowOpenedListener = {
-    observe: function(window, topic) {
-        if (topic !== 'domwindowopened') {
-            return;
-        }
-        window.addEventListener('load', function(event) {
-            ToolbarButton.insertButton(window);
-        }, false);
-    }
-};
-
-let preferenceChangedListener = {
-    observe: function(subject, topic, data) {
-        if (data !== 'encodings') {
-            return;
-        }
-        ToolbarButton.refreshMenus();
-    }
-};
 
 /* bootstrap entry points */
+
+let reDisposition;
 
 let install = function(data, reason) {};
 let uninstall = function(data, reason) {};
 
 let startup = function(data, reason) {
-    // add custom css
-    let styleUri = IOS.newURI(STYLE_URI, null, null);
-    if (!SSS.sheetRegistered(styleUri, SSS.USER_SHEET)) {
-        SSS.loadAndRegisterSheet(styleUri, SSS.USER_SHEET);
-    }
-
-    // add toolbar to exists window
-    let windows = WW.getWindowEnumerator();
-    while (windows.hasMoreElements()) {
-        ToolbarButton.insertButton(windows.getNext());
-    }
-
-    // add toolbar to new open window
-    WW.registerNotification(windowOpenedListener);
-
-    // refresh menus after preference change
-    PFS.addObserver('', preferenceChangedListener, false);
+    loadLocalization();
+    reDisposition = ReDisposition();
+    reDisposition.initialize();
 };
 
 let shutdown = function(data, reason) {
-    // remove custom css
-    let styleUri = IOS.newURI(STYLE_URI, null, null);
-    if (SSS.sheetRegistered(styleUri, SSS.USER_SHEET)) {
-        SSS.unregisterSheet(styleUri, SSS.USER_SHEET);
-    }
-
-    // remove toolbar from exists windows
-    let windows = WW.getWindowEnumerator();
-    while (windows.hasMoreElements()) {
-        ToolbarButton.removeButton(windows.getNext());
-    }
-
-    // stop add toolbar to new open window
-    WW.unregisterNotification(windowOpenedListener);
-
-    // stop update menu after preference change
-    PFS.removeObserver('', preferenceChangedListener, false);
-
-    // disable, cleanup
-    ReDisposition.enable(false);
+    reDisposition.destory();
 };
