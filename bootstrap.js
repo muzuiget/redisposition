@@ -423,7 +423,8 @@ let ReDisposition = function() {
                                   _('activatedTooltip');
     const DEACTIVATED_TOOLTIPTEXT = EXTENSION_NAME + '\n' +
                                     _('deactivatedTooltip');
-    const FILENAME_REGEXP = /attachment; ?filename="(.+?)"/;
+    const FILENAME_REGEXP = /^attachment; ?[fF]ile[nN]ame=(.+)$/;
+    const TRIM_QUOTES_REGEXP = /^"(.+?)";?$/;
 
     const DEFAULT_ENCODINGS = 'GB18030, BIG5';
 
@@ -584,7 +585,8 @@ let ReDisposition = function() {
             // override to specify encoding
             let newHeader;
             try {
-                let filename = header.match(FILENAME_REGEXP)[1];
+                let filename = header.match(FILENAME_REGEXP)[1]
+                                     .replace(TRIM_QUOTES_REGEXP, '$1');
                 newHeader = 'attachment; filename*=' +
                              config.currentEncoding + "''" + filename;
             } catch(error) {
