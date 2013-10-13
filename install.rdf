@@ -7,11 +7,11 @@
     <em:version>0.2.1</em:version>
     <em:type>2</em:type>
     <em:bootstrap>true</em:bootstrap>
-    <em:unpack>true</em:unpack>
+    <em:unpack>false</em:unpack>
 
     <!-- Front End MetaData -->
     <em:name>ReDisposition</em:name>
-    <em:description>Override http header Content-Disposition</em:description>
+    <em:description>Override HTTP header Content-Disposition</em:description>
     <em:creator>muzuiget</em:creator>
 
     <!-- Firefox -->
@@ -28,12 +28,12 @@
     <Description>
         <em:locale>zh-CN</em:locale>
         <em:name>ReDisposition</em:name>
-        <em:description>改写 http 协议头的 Content-Disposition</em:description>
+        <em:description>改写 HTTP 协议头的 Content-Disposition</em:description>
     </Description>
     <Description>
         <em:locale>zh-TW</em:locale>
         <em:name>ReDisposition</em:name>
-        <em:description>改寫 http 協議頭的 Content-Disposition</em:description>
+        <em:description>改寫 HTTP 協議頭的 Content-Disposition</em:description>
     </Description>
     </em:localized>
 
