@@ -587,6 +587,12 @@ let ReDisposition = function() {
             try {
                 let filename = header.match(FILENAME_REGEXP)[1]
                                      .replace(TRIM_QUOTES_REGEXP, '$1');
+
+                // encode the spaces, because Firefox will truncate it
+                // from the first space, and don't think is a bug, see
+                // https://bugzilla.mozilla.org/show_bug.cgi?id=221028
+                filename = filename.replace(/ /g, '%20');
+
                 newHeader = 'attachment; filename*=' +
                              config.currentEncoding + "''" + filename;
             } catch(error) {
