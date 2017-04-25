@@ -4,10 +4,11 @@
 <Description about="urn:mozilla:install-manifest">
 
     <em:id>redisposition@qixinglu.com</em:id>
-    <em:version>0.2.5</em:version>
+    <em:version>{{ version }}</em:version>
     <em:type>2</em:type>
     <em:bootstrap>true</em:bootstrap>
-    <em:unpack>false</em:unpack>
+    <em:unpack>{{ unpack }}</em:unpack>
+    <em:multiprocessCompatible>true</em:multiprocessCompatible>
 
     <!-- Front End MetaData -->
     <em:name>ReDisposition</em:name>
@@ -18,23 +19,20 @@
     <em:targetApplication>
     <Description>
         <em:id>{ec8030f7-c20a-464f-9b0e-13a3a9e97384}</em:id>
-        <em:minVersion>35.0</em:minVersion>
-        <em:maxVersion>36.*</em:maxVersion>
+        <em:minVersion>52.0</em:minVersion>
+        <em:maxVersion>55.*</em:maxVersion>
     </Description>
     </em:targetApplication>
 
     <!-- Localize -->
     <em:localized>
+{% for locale in locales %}
     <Description>
-        <em:locale>zh-CN</em:locale>
-        <em:name>ReDisposition</em:name>
-        <em:description>改写 HTTP 协议头的 Content-Disposition</em:description>
+        <em:locale>{{ locale.lang }}</em:locale>
+        <em:name>{{ locale.name }}</em:name>
+        <em:description>{{ locale.desc }}</em:description>
     </Description>
-    <Description>
-        <em:locale>zh-TW</em:locale>
-        <em:name>ReDisposition</em:name>
-        <em:description>改寫 HTTP 協議頭的 Content-Disposition</em:description>
-    </Description>
+{% endfor %}
     </em:localized>
 
 </Description>

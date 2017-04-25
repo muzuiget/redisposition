@@ -1,0 +1,5 @@
+content  {{ idname }}  content/
+skin     {{ idname }}  classic/1.0  skin/
+{% for lang in langs -%}
+locale   {{ idname }}  {{ lang }}   locale/{{ lang }}/
+{% endfor %}
