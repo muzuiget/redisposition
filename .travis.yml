@@ -1,0 +1,29 @@
+language: node_js
+
+notifications:
+    email: false
+
+matrix:
+    include:
+        - os: linux
+          dist: trusty
+          sudo: false
+          node_js: '7'
+
+install:
+    - npm install
+
+script:
+    - npm run build
+    - ls dist/xpi
+
+deploy:
+    provider: releases
+    api_key:
+        secure: Z25MdWj0fkvU+6YE7+xh3Ez2Fuj5EF0Ngv2HkAV/kvw0xNPhugORFg/Wj5DxcoJ3eeerDcNsVMZCf9WSOh8u8NP+A6dZ1ljiQcpE8jmA9mPLutKQpnOpiCW9mHLFB25kevnTf3nEQZacHUaKaooLMPH/3cDdNBO8J/9plJ9U+25V2OxXVZri+jwWCn/naayF8lJVG8pvI7YSngZ65/+jQeXq+JBtpsOegh9EWwewESw3MQbf0TXGl3aUf0tgwtpIxoq7jXVJFgaYf9iCA66N9U0QF3S7knzWgxXq3SX2wXtll2r4qQDvQNicuJd97/x1zsarKWb36eCEzkwpG6ukcOP6UXSUQ0zt/Fs5/atG5j3lm1R5xdYlJ2GVGhWmOLfvSenxcnSCPXPgdJFgFY9Kr0qMWxy50AEfRNHGrWOPDBQ8Sc+9Pcdmx1TqGuMfN2mKXdRW8c6m+ni2Fb3Um/E29MAefvFH5cvTcw+24BP3O8FrL7vSIB+vsNNyt0qhYGevi2KTstL8HhZ8o/9arEKF4nlVPqKN+skBm99rIUS8UxvmFqwx1YQVDYwNFtxF5yR4WGUcSclg7+1RjIBTjms/MTDge3JdKKbA/x0nDNbeunIrF1e7wy8jLpllp/VB7jSgePAdmVmPV/zDbbBUIBwpG16KqWluMBIxbmY6FtNqePM=
+    file_glob: true
+    file: dist/xpi/*.xpi
+    overwrite: true
+    skip_cleanup: true
+    on:
+        tags: true
