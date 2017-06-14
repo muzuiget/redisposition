@@ -15,6 +15,10 @@ ReDisposition is Firefox extension to override HTTP header Content-Disposition.
 
 * [Mozilla Addons Page](https://addons.mozilla.org/firefox/addon/redisposition/), formal release, signed xpi file, reviewed by AMO. 
 
+## Docs
+
+* [docs](docs/)
+
 ## License
 
 [MPLv2](http://www.mozilla.org/MPL/2.0/)
